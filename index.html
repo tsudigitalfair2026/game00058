@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>うさぎパズル迷路</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{
+margin:0;
+width:100%;
+height:100%;
+overflow:hidden;
+touch-action:none;
+font-family:sans-serif;
+background:#f4f7ff;
+}
+.screen{
+width:100%;
+height:100%;
+display:none;
+flex-direction:column;
+align-items:center;
+justify-content:center;
+padding:12px;
+text-align:center;
+}
+.active{display:flex;}
+h1{margin:8px 0;color:#6b4e16;}
+button{
+border:none;
+border-radius:14px;
+padding:16px 28px;
+font-size:20px;
+min-width:180px;
+background:#ff9f43;
+color:#fff;
+font-weight:bold;
+}
+#hud{
+width:100%;
+display:flex;
+justify-content:space-between;
+padding:8px;
+font-size:18px;
+font-weight:bold;
+}
+#gameScreen{justify-content:flex-start;}
+#guide{
+font-size:14px;
+margin-bottom:6px;
+}
+#board{
+display:grid;
+gap:2px;
+width:min(94vw,80vh);
+aspect-ratio:1/1;
+margin:auto;
+}
+.cell{
+display:flex;
+align-items:center;
+justify-content:center;
+border-radius:4px;
+user-select:none;
+font-size:clamp(10px,2.5vw,22px);
+}
+.wall{background:#636e72;}
+.path{background:#fff;}
+.rabbit{background:#ffeaa7;}
+.goal{background:#55efc4;}
+.selected{background:#74b9ff!important;}
+.rank{
+font-size:36px;
+font-weight:bold;
+margin:12px;
+color:#e17055;
+}
+</style>
+</head>
+<body>
+
+<div id="startScreen" class="screen active">
+<h1>🐰 うさぎパズル迷路</h1>
+<p>
+うさぎからにんじんまで道をなぞろう！<br>
+60秒でたくさんクリアしよう。<br>
+さらに高得点になると超巨大迷路が出現！
+</p>
+<button id="startBtn">スタート</button>
+</div>
+
+<div id="gameScreen" class="screen">
+<div id="hud">
+<div>🏆 <span id="score">0</span></div>
+<div>⏰ <span id="time">60</span></div>
+</div>
+<div id="guide">🐰→🥕 をドラッグでつなごう</div>
+<div id="board"></div>
+</div>
+
+<div id="resultScreen" class="screen">
+<h1>結果発表</h1>
+<div style="font-size:28px;">最終スコア</div>
+<div id="finalScore" style="font-size:52px;font-weight:bold;">0</div>
+<div id="rank" class="rank">C</div>
+<button id="restartBtn">もう一度遊ぶ</button>
+</div>
+
+<script>
+const board=document.getElementById("board");
+const scoreEl=document.getElementById("score");
+const timeEl=document.getElementById("time");
+const finalScore=document.getElementById("finalScore");
+const rankEl=document.getElementById("rank");
+const guide=document.getElementById("guide");
+
+let score=0;
+let time=60;
+let timer=null;
+
+let maze=[];
+let size=8;
+let dragging=false;
+let path=[];
+let startCell={r:0,c:0};
+let goalCell={r:0,c:0};
+
+function show(id){
+document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+document.getElementById(id).classList.add("active");
+}
+
+function createMaze(){
+
+size = score>=500 ? 12 : 8;
+
+guide.textContent=
+score>=500
+? "🌟 超巨大迷路チャレンジ！"
+: "🐰→🥕 をドラッグでつなごう";
+
+maze=Array.from({length:size},()=>Array(size).fill(1));
+
+let x=0,y=0;
+maze[0][0]=0;
+
+while(x<size-1 || y<size-1){
+if(x===size-1)y++;
+else if(y===size-1)x++;
+else Math.random()<0.5?x++:y++;
+maze[y][x]=0;
+}
+
+for(let r=0;r<size;r++){
+for(let c=0;c<size;c++){
+if(maze[r][c]===1 && Math.random()<0.55){
+maze[r][c]=0;
+}
+}
+}
+
+goalCell={r:size-1,c:size-1};
+
+drawMaze();
+}
+
+function drawMaze(){
+board.innerHTML="";
+board.style.gridTemplateColumns=`repeat(${size},1fr)`;
+
+for(let r=0;r<size;r++){
+for(let c=0;c<size;c++){
+
+const cell=document.createElement("div");
+cell.dataset.r=r;
+cell.dataset.c=c;
+
+cell.className="cell "+(maze[r][c]?"wall":"path");
+
+if(r===0 && c===0){
+cell.classList.add("rabbit");
+cell.textContent="🐰";
+}
+
+if(r===goalCell.r && c===goalCell.c){
+cell.classList.add("goal");
+cell.textContent="🥕";
+}
+
+board.appendChild(cell);
+}
+}
+path=[];
+}
+
+function clearSel(){
+document.querySelectorAll(".selected").forEach(x=>x.classList.remove("selected"));
+}
+
+function pointCell(x,y){
+const el=document.elementFromPoint(x,y);
+if(el && el.classList.contains("cell")) return el;
+return null;
+}
+
+function begin(cell){
+if(!cell) return;
+
+if(cell.dataset.r!=="0" || cell.dataset.c!=="0") return;
+
+dragging=true;
+clearSel();
+path=[cell];
+cell.classList.add("selected");
+}
+
+function move(cell){
+if(!dragging || !cell) return;
+
+const r=+cell.dataset.r;
+const c=+cell.dataset.c;
+
+if(maze[r][c]===1){
+dragging=false;
+clearSel();
+return;
+}
+
+const last=path[path.length-1];
+if(last===cell) return;
+
+const lr=+last.dataset.r;
+const lc=+last.dataset.c;
+
+if(Math.abs(lr-r)+Math.abs(lc-c)!==1) return;
+if(path.includes(cell)) return;
+
+path.push(cell);
+cell.classList.add("selected");
+
+if(r===goalCell.r && c===goalCell.c){
+
+score += (size===12)?200:100;
+scoreEl.textContent=score;
+
+dragging=false;
+
+setTimeout(createMaze,200);
+}
+}
+
+function endDrag(){
+dragging=false;
+}
+
+board.addEventListener("pointerdown",e=>begin(e.target));
+
+board.addEventListener("pointermove",e=>{
+if(!dragging) return;
+move(pointCell(e.clientX,e.clientY));
+});
+
+board.addEventListener("pointerup",endDrag);
+board.addEventListener("pointercancel",endDrag);
+board.addEventListener("pointerleave",endDrag);
+
+function finishGame(){
+
+finalScore.textContent=score;
+
+let rank="C";
+if(score>=2000) rank="S";
+else if(score>=1200) rank="A";
+else if(score>=700) rank="B";
+
+rankEl.textContent="ランク "+rank;
+
+show("resultScreen");
+}
+
+function startGame(){
+
+score=0;
+time=60;
+
+scoreEl.textContent=0;
+timeEl.textContent=60;
+
+createMaze();
+
+show("gameScreen");
+
+clearInterval(timer);
+
+timer=setInterval(()=>{
+time--;
+timeEl.textContent=time;
+
+if(time<=0){
+clearInterval(timer);
+finishGame();
+}
+},1000);
+}
+
+document.getElementById("startBtn").addEventListener("click",startGame);
+document.getElementById("restartBtn").addEventListener("click",startGame);
+
+document.addEventListener("gesturestart",e=>e.preventDefault());
+document.addEventListener("dblclick",e=>e.preventDefault());
+</script>
+
+</body>
+</html>
